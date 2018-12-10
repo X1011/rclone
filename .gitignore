@@ -1,10 +1,7 @@
 *~
 _junk/
 rclone
-rclonetest/rclonetest
 build
 docs/public
-MANUAL.md
-MANUAL.html
-MANUAL.txt
-rclone.1
+rclone.iml
+.idea

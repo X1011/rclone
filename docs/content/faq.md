@@ -12,31 +12,17 @@ Frequently Asked Questions
 Yes they do.  All the rclone commands (eg `sync`, `copy` etc) will
 work on all the remote storage systems.
 
-
 ### Can I copy the config from one machine to another ###
 
 Sure!  Rclone stores all of its config in a single file.  If you want
 to find this file, the simplest way is to run `rclone -h` and look at
-the help for the `--config` flag which will tell you where it is. Eg,
+the help for the `--config` flag which will tell you where it is.
 
-```
-$ rclone -h
-Sync files and directories to and from local and remote object stores - v1.18.
-[snip]
-Options:
-      --bwlimit=0: Bandwidth limit in kBytes/s, or use suffix k|M|G
-      --checkers=8: Number of checkers to run in parallel.
-  -c, --checksum=false: Skip based on checksum & size, not mod-time & size
-      --config="/home/user/.rclone.conf": Config file.
-[snip]
-```
+See the [remote setup docs](/remote_setup/) for more info.
 
-So in this config the config file can be found in
-`/home/user/.rclone.conf`.
+### How do I configure rclone on a remote / headless box with no browser? ###
 
-Just copy that to the equivalent place in the destination (run `rclone
--h` above again on the destination machine if not sure).
-
+This has now been documented in its own [remote setup page](/remote_setup/).
 
 ### Can rclone sync directly from drive to s3 ###
 
@@ -73,3 +59,112 @@ Server B> rclone copy /tmp/whatever remote:Backup
 The file names you upload from Server A and Server B should be
 different in this case, otherwise some file systems (eg Drive) may
 make duplicates.
+
+### Why doesn't rclone support partial transfers / binary diffs like rsync? ###
+
+Rclone stores each file you transfer as a native object on the remote
+cloud storage system.  This means that you can see the files you
+upload as expected using alternative access methods (eg using the
+Google Drive web interface).  There is a 1:1 mapping between files on
+your hard disk and objects created in the cloud storage system.
+
+Cloud storage systems (at least none I've come across yet) don't
+support partially uploading an object. You can't take an existing
+object, and change some bytes in the middle of it.
+
+It would be possible to make a sync system which stored binary diffs
+instead of whole objects like rclone does, but that would break the
+1:1 mapping of files on your hard disk to objects in the remote cloud
+storage system.
+
+All the cloud storage systems support partial downloads of content, so
+it would be possible to make partial downloads work.  However to make
+this work efficiently this would require storing a significant amount
+of metadata, which breaks the desired 1:1 mapping of files to objects.
+
+### Can rclone do bi-directional sync? ###
+
+No, not at present.  rclone only does uni-directional sync from A ->
+B. It may do in the future though since it has all the primitives - it
+just requires writing the algorithm to do it.
+
+### Can I use rclone with an HTTP proxy? ###
+
+Yes. rclone will use the environment variables `HTTP_PROXY`,
+`HTTPS_PROXY` and `NO_PROXY`, similar to cURL and other programs.
+
+`HTTPS_PROXY` takes precedence over `HTTP_PROXY` for https requests.
+
+The environment values may be either a complete URL or a "host[:port]",
+in which case the "http" scheme is assumed.
+
+The `NO_PROXY` allows you to disable the proxy for specific hosts.
+Hosts must be comma separated, and can contain domains or parts.
+For instance "foo.com" also matches "bar.foo.com".
+
+### Rclone gives x509: failed to load system roots and no roots provided error ###
+
+This means that `rclone` can't file the SSL root certificates.  Likely
+you are running `rclone` on a NAS with a cut-down Linux OS, or
+possibly on Solaris.
+
+Rclone (via the Go runtime) tries to load the root certificates from
+these places on Linux.
+
+    "/etc/ssl/certs/ca-certificates.crt", // Debian/Ubuntu/Gentoo etc.
+    "/etc/pki/tls/certs/ca-bundle.crt",   // Fedora/RHEL
+    "/etc/ssl/ca-bundle.pem",             // OpenSUSE
+    "/etc/pki/tls/cacert.pem",            // OpenELEC
+
+So doing something like this should fix the problem.  It also sets the
+time which is important for SSL to work properly.
+
+```
+mkdir -p /etc/ssl/certs/
+curl -o /etc/ssl/certs/ca-certificates.crt https://raw.githubusercontent.com/bagder/ca-bundle/master/ca-bundle.crt
+ntpclient -s -h pool.ntp.org
+```
+
+The two environment variables `SSL_CERT_FILE` and `SSL_CERT_DIR`, mentioned in the [x509 pacakge](https://godoc.org/crypto/x509),
+provide an additional way to provide the SSL root certificates.
+
+Note that you may need to add the `--insecure` option to the `curl` command line if it doesn't work without.
+
+```
+curl --insecure -o /etc/ssl/certs/ca-certificates.crt https://raw.githubusercontent.com/bagder/ca-bundle/master/ca-bundle.crt
+```
+
+### Rclone gives Failed to load config file: function not implemented error ###
+
+Likely this means that you are running rclone on Linux version not
+supported by the go runtime, ie earlier than version 2.6.23.
+
+See the [system requirements section in the go install
+docs](https://golang.org/doc/install) for full details.
+
+### All my uploaded docx/xlsx/pptx files appear as archive/zip ###
+
+This is caused by uploading these files from a Windows computer which
+hasn't got the Microsoft Office suite installed.  The easiest way to
+fix is to install the Word viewer and the Microsoft Office
+Compatibility Pack for Word, Excel, and PowerPoint 2007 and later
+versions' file formats
+
+### tcp lookup some.domain.com no such host ###
+
+This happens when rclone cannot resolve a domain. Please check that
+your DNS setup is generally working, e.g.
+
+```
+# both should print a long list of possible IP addresses
+dig www.googleapis.com          # resolve using your default DNS
+dig www.googleapis.com @8.8.8.8 # resolve with Google's DNS server
+```
+
+If you are using `systemd-resolved` (default on Arch Linux), ensure it
+is at version 233 or higher. Previous releases contain a bug which
+causes not all domains to be resolved properly.
+
+Additionally with the `GODEBUG=netdns=` environment variable the Go
+resolver decision can be influenced. This also allows to resolve certain
+issues with DNS resolution. See the [name resolution section in the go docs](https://golang.org/pkg/net/#hdr-Name_Resolution).
